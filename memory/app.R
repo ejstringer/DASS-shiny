@@ -112,16 +112,17 @@ server <- function(input, output, session) {
     ggplot(mydf$df, aes(x, y, label = n)) +
       geom_text(hjust=0,vjust=0, size = 10,
                 colour = values())+
-      ggtitle(timer2())+
+      ggtitle(paste("exposure time left:", timer2()))+
       xlim(0,max(mydf$df$x)+1)+
       ylim(0,max(mydf$df$y)+1)+
       theme_void()
     
   })
+    
   
   # Output the time left.
   output$timeleft <- renderText({
-    paste("Time left: ", seconds_to_period(timer()))
+    paste("practice time left: ", seconds_to_period(timer()))
   })
   
   # observer that invalidates every second. If timer is active, decrease by one.
