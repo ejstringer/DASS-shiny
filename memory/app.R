@@ -32,8 +32,8 @@ ui <- fluidPage(
   actionButton('submitdetails', "confirm details"),
   hidden(actionButton('start','Start practicing!')),
   #numericInput('seconds','Seconds:',value=10,min=0,max=99999,step=1),
-  #textOutput('randomtime'),
   hidden(textOutput('timeleft')),
+  hidden(textOutput('randomtime')),
   hidden(plotOutput('game')),
   hidden(textInput('guess', label = "your guess:")), 
   hidden(actionButton('submit', 'submit')),
@@ -102,20 +102,38 @@ server <- function(input, output, session) {
   
   #guess <- reactiveVal()
   
+  output$randomtime <- renderText({
+    paste("exposure time left:", seconds_to_period(timer2()))
+  })
+  
   output$game <- renderPlot({
   
     
-    df <- data.frame(x = 1:6, y = rep(1,6),
-                     n = sample(c(1:9,LETTERS), 6, replace = TRUE))
+  
     
     #plotcol <- ifelse(values(), "black", "white")
-    ggplot(mydf$df, aes(x, y, label = n)) +
-      geom_text(hjust=0,vjust=0, size = 10,
-                colour = values())+
-      ggtitle(paste("exposure time left:", timer2()))+
-      xlim(0,max(mydf$df$x)+1)+
-      ylim(0,max(mydf$df$y)+1)+
-      theme_void()
+    # ggplot(mydf$df, aes(x, y, label = n)) +
+    #   geom_text(hjust=0,vjust=0, size = 10,
+    #             colour = values())+
+    #   ggtitle(paste("exposure time left:", timer2()))+
+    #   xlim(0,max(mydf$df$x)+1)+
+    #   ylim(0,max(mydf$df$y)+1)+
+    #   theme_void()
+    # 
+    # plot.new()
+    # plot(df$x, df$y, col = "white")
+    # plot(1, type="n", xlab="", ylab="", xlim=c(0, 10), ylim=c(0, 10))
+    # 
+    
+     plot(c(0, mydf$df$x, max(mydf$df$x)+1),
+         c(0, mydf$df$y, max(mydf$df$y)+1),
+         type='n',axes=FALSE,ann=FALSE,
+         main = paste("exposure time left:", timer2()))
+    
+    text(mydf$df$x, mydf$df$y,
+         labels = mydf$df$n,
+         cex = 2, col = values())
+    
     
   })
     
@@ -139,6 +157,7 @@ server <- function(input, output, session) {
           hide('nextseq')
           hide('guess')
           hide('timeleft')
+          hide('randomtime')
           hide('start')
           hide('game')
           timer2(firstTest)
@@ -180,6 +199,7 @@ server <- function(input, output, session) {
     active2(TRUE)
     timer2(sample(testTimes, 1))
     show('game')
+    show('randomtime')
     hide('start')
     
   })
@@ -238,6 +258,7 @@ server <- function(input, output, session) {
     test(test() + 1)
     values('black')
     show('game')
+    show('randomtime')
     
     if(test() == 2) timer2(ifelse(firstTest==testTimes[1],
                                   testTimes[2], testTimes[1]))
