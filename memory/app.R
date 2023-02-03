@@ -1,4 +1,5 @@
 
+
 library(lubridate)
 library(shiny)
 library(ggplot2)
@@ -7,31 +8,27 @@ library(rsconnect)
 
 
 
+smtp <- emayili::server(
+  host = Sys.getenv("GMAIL_SERVER"),
+  port = 587,
+  username = Sys.getenv("GMAIL_USERNAME"),
+  password = Sys.getenv("GMAIL_PASSWORD")
+)
+
 ui <- fluidPage(
   hr(),
   useShinyjs(),
   
   textOutput('details'),
-  selectInput('lab', 'Which lab are you in?', 
-              c("Tuesday - 3:30",
-                "Wednesday - 9:30",
-                "Wednesday - 12:30",
-                "Wednesday - 2:30",
-                "Wednesday - 4:30",
-                "Thursday - 9:30",
-                "Thursday - 12:30",
-                "Thursday - 3:30"
-                )),
+  
   textInput('course', "What is your course code? (eg. ENB001)"),
   radioButtons('location', "Are you taking this test in your computer lab or somewhere else?",
                c("lab", "elsewhere")),
   radioButtons('hand', "Are you left or right handed?",
                c('right', 'left')),
-  radioButtons('good', "Do you think you have a good memory?",
-              c("yes", "no")),
   actionButton('submitdetails', "confirm details"),
+  
   hidden(actionButton('start','Start practicing!')),
-  #numericInput('seconds','Seconds:',value=10,min=0,max=99999,step=1),
   hidden(textOutput('timeleft')),
   hidden(textOutput('randomtime')),
   hidden(plotOutput('game')),
@@ -39,59 +36,60 @@ ui <- fluidPage(
   hidden(actionButton('submit', 'submit')),
   hidden(actionButton('nextseq', 'next sequence')),
   hidden(actionButton('nexttest', 'start Test')),
-  hidden(downloadButton("downloadData", "Download"))
-  
+  hidden(downloadButton("downloadData", "Download")),
+  hidden(actionButton('email', 'Submit Results')),
+  hidden(textOutput('confirmation'))
   
 )
 
 server <- function(input, output, session) {
   
   
-# first entry ------------------------------------------------------------------  
+  # first entry ------------------------------------------------------------------  
   output$details <- renderText({
     print("Welcome! Let's collect some data, starting with some general information about you.")
-    })
+  })
   
   observeEvent(input$submitdetails,{
     show('start')
     show('timeleft')
     hide('details')
-    hide('lab')
     hide('submitdetails')
     hide('location')
     hide('hand')
     hide('course')
-    hide('good')
     
   })
   
-# start practic ----------------------------------------------------------------  
+  # start practic ----------------------------------------------------------------  
   # Initialize the practice time, test times, and length of sequence
-
-###############__########################
-############# EDIT ##################### 
   
-  practiceTIME <- sample(60:300, 1) # practice time
+  ###############__########################
+  ############# EDIT ##################### 
+  
+  practiceTIME <- sample(30:120, 1) # practice time
   testTimes <- sort(c(5,10))        # how long you see sequence
   remember <- 12                    # length of sequence
+  alphabet <- sample(c(top = 1, middle = 9, bottom = 17),1)
   
-############# stop edits ############### 
-################__######################
-    
+  ############# stop edits ############### 
+  ################__######################
+  
   timer <- reactiveVal(practiceTIME)
   timer2 <- reactiveVal(10)
   active <- reactiveVal(FALSE)
   active2 <- reactiveVal(FALSE)
   test <- reactiveVal(0)
   
+  
   values <- reactiveVal("black")
   
   mydf <- reactiveValues(df = data.frame(x = 1:remember, y = rep(1,remember),
-                                         n = sample(c(1:9,LETTERS),
-                                                   remember , replace = TRUE)))
+                                         n = sample(c(1:9,LETTERS[alphabet:(alphabet+8)]),
+                                                    remember , replace = TRUE)))
   
   not.in.use.df <- data.frame(x = rep(1:3,3), y = rep(1:3, each= 3), 
-                   n = sample(c(1:9,LETTERS), 9, replace = TRUE))
+                              n = sample(c(1:9,LETTERS)[alphabet:(alphabet+8)], 9, replace = TRUE))
   
   
   
@@ -100,32 +98,14 @@ server <- function(input, output, session) {
   score <- reactiveVal(0)
   firstTest <- sample(testTimes, 1)
   
-  #guess <- reactiveVal()
-  
   output$randomtime <- renderText({
     paste("exposure time left:", seconds_to_period(timer2()))
   })
   
   output$game <- renderPlot({
-  
     
-  
     
-    #plotcol <- ifelse(values(), "black", "white")
-    # ggplot(mydf$df, aes(x, y, label = n)) +
-    #   geom_text(hjust=0,vjust=0, size = 10,
-    #             colour = values())+
-    #   ggtitle(paste("exposure time left:", timer2()))+
-    #   xlim(0,max(mydf$df$x)+1)+
-    #   ylim(0,max(mydf$df$y)+1)+
-    #   theme_void()
-    # 
-    # plot.new()
-    # plot(df$x, df$y, col = "white")
-    # plot(1, type="n", xlab="", ylab="", xlim=c(0, 10), ylim=c(0, 10))
-    # 
-    
-     plot(c(0, mydf$df$x, max(mydf$df$x)+1),
+    plot(c(0, mydf$df$x, max(mydf$df$x)+1),
          c(0, mydf$df$y, max(mydf$df$y)+1),
          type='n',axes=FALSE,ann=FALSE,
          main = paste("exposure time left:", timer2()))
@@ -136,7 +116,7 @@ server <- function(input, output, session) {
     
     
   })
-    
+  
   
   # Output the time left.
   output$timeleft <- renderText({
@@ -216,7 +196,7 @@ server <- function(input, output, session) {
     
     seqnc <- 1:ncorrect
     bonus <- seqnc*0.66
-    score1 <- sum(seqnc*bonus) + halfcorrect
+    score1 <- ncorrect
     
     if (test() == 1) {
       if(firstTest == testTimes[1]) test10(ncorrect)
@@ -224,13 +204,14 @@ server <- function(input, output, session) {
       score(score() + score1)
       show('nexttest')
     }
-      if(test() == 2){
-        if(firstTest == testTimes[1]) test20(ncorrect)
-        if(firstTest == testTimes[2]) test10(ncorrect)
-        score(score() + score1)
-        show('downloadData')
-        hide('nexttest')
-      } 
+    if(test() == 2){
+      if(firstTest == testTimes[1]) test20(ncorrect)
+      if(firstTest == testTimes[2]) test10(ncorrect)
+      score(score() + score1)
+      show('downloadData')
+      show('email')
+      hide('nexttest')
+    } 
     
     
     values(ifelse(correct, "forestgreen", "red"))
@@ -242,7 +223,8 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$nextseq, {
-    mydf$df$n <- sample(c(1:9,LETTERS),nrow(mydf$df), replace = TRUE)
+    mydf$df$n <- sample(c(1:9,LETTERS[alphabet:(alphabet+8)]),
+                        nrow(mydf$df), replace = TRUE)
     values("black")
     timer2(sample(testTimes, 1))
     show('game')
@@ -253,7 +235,8 @@ server <- function(input, output, session) {
   
   observeEvent(input$nexttest, {
     hide('nexttest')
-    mydf$df$n <- sample(c(1:9,LETTERS),nrow(mydf$df), replace = TRUE)
+    mydf$df$n <- sample(c(1:9,LETTERS[alphabet:(alphabet+8)]),
+                        nrow(mydf$df), replace = TRUE)
     active2(TRUE)
     test(test() + 1)
     values('black')
@@ -262,7 +245,7 @@ server <- function(input, output, session) {
     
     if(test() == 2) timer2(ifelse(firstTest==testTimes[1],
                                   testTimes[2], testTimes[1]))
-
+    
   })
   
   # Downloadable csv of selected dataset ----
@@ -275,23 +258,67 @@ server <- function(input, output, session) {
       write.csv(data.frame(date_of_test = date(Sys.time()),
                            time_of_test = format(as.POSIXct(Sys.time()), format = "%H:%M"),
                            course = input$course,
-                           computer_lab = input$lab,
                            test_location = input$location,
                            handedness = input$hand,
-                           good_memory = input$good,
+                           alphabet = names(alphabet),
                            practice_time = practiceTIME,
-                           test_times = paste(paste(testTimes,
-                                                    collapse = " and "),
-                                              "seconds"),
                            first_test = ifelse(firstTest==testTimes[1],
-                                                "short", "long"),
+                                               "short", "long"),
                            results_short = test10(),
                            results_long = test20(),
-                           score = score(),
+                           results_total = score(),
                            comments = ""), 
                 file, row.names = FALSE)
     }
   )
+  
+  
+  # ## Submission confirmation
+  output$confirmation <- renderText({
+    paste("Answers and results successfully submitted - cheers!")
+  })
+  # 
+  # Submit answers 
+  observeEvent(input$email,{
+    
+    studentResults <- data.frame(date_of_test = date(Sys.time()),
+                                 time_of_test = format(as.POSIXct(Sys.time()), format = "%H:%M"),
+                                 course = input$course,
+                                 test_location = input$location,
+                                 handedness = input$hand,
+                                 alphabet = names(alphabet),
+                                 practice_time = practiceTIME,
+                                 first_test = ifelse(firstTest==testTimes[1],
+                                                     "short", "long"),
+                                 results_short = test10(),
+                                 results_long = test20(),
+                                 results_total = score(),
+                                 comments = "")
+    path_results <- tempfile(pattern = 'DASSmemory_results',  fileext = ".csv")
+    write.csv(studentResults, path_results, row.names = FALSE)
+    
+    
+    params <- 'lettsss goooooo! Have a good weekend :) -Em'
+    
+    
+    email <- emayili::envelope(
+      to = c("u3084083@uni.canberra.edu.au",
+             "adrian.dusting@canberra.edu.au"), # feel free to put your own email address while troubleshooting! =)
+      from = "11723.DASS@gmail.com",
+      subject = "Memory_test_results",
+      html=tagList(
+        p(params)
+      )
+    )
+    emailatt<- emayili::attachment(email, path_results)
+    
+    smtp(emailatt, verbose = TRUE)
+    
+    show('confirmation')
+    
+  })
+  
+  
   
   
   
@@ -299,6 +326,3 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
-
-
-### test normality of scores
